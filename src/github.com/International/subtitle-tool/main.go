@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/lestrrat/go-libxml2"
+	"github.com/lestrrat/go-libxml2/xpath"
 )
 
 type Subtitle struct {
@@ -42,6 +45,21 @@ func parseParams() (*ShowSearchParams, error) {
 	}
 
 	return &ShowSearchParams{*showName, *season, *episode, *download, *language}, nil
+}
+
+func parseSubtitles(input []byte) ([]Subtitle, error) {
+	d, err := libxml2.ParseString(string(input))
+	if err != nil {
+		return nil, err
+	}
+	ctx, err := xpath.NewContext(d)
+	if err != nil {
+		return nil, err
+	}
+
+	subtitles := xpath.NodeList(ctx.Find("//subtitle"))
+
+	// log.
 }
 
 func searchSubtitles(searchParams ShowSearchParams) ([]byte, error) {
