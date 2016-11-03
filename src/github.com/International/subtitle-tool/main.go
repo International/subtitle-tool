@@ -18,6 +18,7 @@ import (
 )
 
 type Subtitle struct {
+	Title    string
 	Releases []string
 	Season   string
 	Episode  string
@@ -72,7 +73,6 @@ func parseSubtitles(input []byte) ([]Subtitle, error) {
 	subtitles := make([]Subtitle, 0)
 
 	subtitleNodes := xpath.NodeList(ctx.Find("//subtitle"))
-	log.Println("number of subtitle nodes", len(subtitleNodes))
 
 	for _, subtitle := range subtitleNodes {
 		subCtx, err := xpath.NewContext(subtitle)
@@ -81,6 +81,12 @@ func parseSubtitles(input []byte) ([]Subtitle, error) {
 			return nil, err
 		}
 
+		titleNode, err := subCtx.Find("./title")
+		if err != nil {
+			return nil, err
+		}
+
+		title := titleNode.String()
 		urlNode := xpath.NodeList(subCtx.Find("./url"))
 		languageNode, err := subCtx.Find("./language")
 		if err != nil {
@@ -109,7 +115,7 @@ func parseSubtitles(input []byte) ([]Subtitle, error) {
 		}
 
 		subtitles = append(subtitles,
-			Subtitle{Releases: releaseCollection, Season: season,
+			Subtitle{Title: title, Releases: releaseCollection, Season: season,
 				Episode: episode, Language: language, URL: url})
 	}
 
@@ -135,19 +141,15 @@ func searchSubtitles(searchParams ShowSearchParams) ([]byte, error) {
 		requestParams = append(requestParams, key+"="+url.QueryEscape(value))
 	}
 
-	log.Println(requestParams, "len:", len(requestParams))
 	queryString = strings.Join(requestParams, "&")
-	log.Println("queryString", queryString)
 	fullUrl := requestUrl + queryString
 
-	log.Println("requesting url", fullUrl)
 	response, err := http.Get(fullUrl)
 
 	if err != nil {
 		return nil, err
 	}
 
-	log.Println("status code:", response.StatusCode)
 	data, err := ioutil.ReadAll(response.Body)
 
 	if err != nil {
@@ -217,32 +219,22 @@ func main() {
 		subtitles = subtitles[0:params.Limit]
 	}
 
-	log.Println(subtitles)
-
-	if params.Download {
-		log.Println("downloading subtitles:", len(subtitles))
-
+	if len(subtitles) == 0 {
+		log.Println("no subtitles found")
+	} else {
 		for _, subtitle := range subtitles {
-			err := downloadSubtitle(subtitle)
-			if err != nil {
-				log.Fatalf(err.Error())
+			if params.Download {
+				log.Println("downloading subtitles:", len(subtitles))
+
+				err := downloadSubtitle(subtitle)
+				if err != nil {
+					log.Fatalf(err.Error())
+				} else {
+					log.Println("succesfully downloaded", subtitle.URL)
+				}
 			} else {
-				log.Println("succesfully downloaded", subtitle.URL)
+				log.Println("Subtitle for:", subtitle.Title, "available in lang:", subtitle.Language)
 			}
 		}
-	} else {
-		log.Println("not downloading subtitles")
 	}
-
-	// args := os.Args[1:]
-	// file, err := os.Open(args[0])
-	// if err != nil {
-	// 	log.Fatalf(err.Error())
-	// }
-	// data, err := ioutil.ReadAll(file)
-	// if err != nil {
-	// 	log.Fatalf(err.Error())
-	// }
-	// subtitles, err := parseSubtitles(data)
-	// log.Println(subtitles)
 }
