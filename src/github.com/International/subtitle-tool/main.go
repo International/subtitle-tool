@@ -14,6 +14,11 @@ import (
 )
 
 type Subtitle struct {
+	Releases []string
+	Season   string
+	Episode  string
+	Language string
+	URL      string
 }
 
 type ShowSearchParams struct {
@@ -57,8 +62,51 @@ func parseSubtitles(input []byte) ([]Subtitle, error) {
 		return nil, err
 	}
 
-	subtitles := xpath.NodeList(ctx.Find("//subtitle"))
+	subtitles := make([]Subtitle, 0)
 
+	subtitleNodes := xpath.NodeList(ctx.Find("//subtitle"))
+	log.Println("number of subtitle nodes", len(subtitleNodes))
+
+	for _, subtitle := range subtitleNodes {
+		subCtx, err := xpath.NewContext(subtitle)
+
+		if err != nil {
+			return nil, err
+		}
+
+		urlNode := xpath.NodeList(subCtx.Find("./url"))
+		languageNode, err := subCtx.Find("./language")
+		if err != nil {
+			return nil, nil
+		}
+
+		seasonNode, err := subCtx.Find("./tvSeason")
+		if err != nil {
+			return nil, nil
+		}
+
+		episodeNode, err := subCtx.Find("./tvEpisode")
+		if err != nil {
+			return nil, nil
+		}
+
+		language := languageNode.String()
+		url := urlNode.NodeValue()
+		releases := xpath.NodeList(subCtx.Find(".//releases/release"))
+		releaseCollection := make([]string, 0)
+		season := seasonNode.String()
+		episode := episodeNode.String()
+
+		for _, release := range releases {
+			releaseCollection = append(releaseCollection, release.NodeValue())
+		}
+
+		subtitles = append(subtitles,
+			Subtitle{Releases: releaseCollection, Season: season,
+				Episode: episode, Language: language, URL: url})
+	}
+
+	return subtitles, nil
 	// log.
 }
 
@@ -113,5 +161,20 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	log.Println(string(subtitleData))
+	subtitles, err := parseSubtitles(subtitleData)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	log.Println(subtitles)
+	// args := os.Args[1:]
+	// file, err := os.Open(args[0])
+	// if err != nil {
+	// 	log.Fatalf(err.Error())
+	// }
+	// data, err := ioutil.ReadAll(file)
+	// if err != nil {
+	// 	log.Fatalf(err.Error())
+	// }
+	// subtitles, err := parseSubtitles(data)
+	// log.Println(subtitles)
 }
