@@ -1,0 +1,8 @@
+bin
+!src/
+src/*
+
+!src/github.com/
+src/github.com/*
+!src/github.com/International/
+pkg
