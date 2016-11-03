@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
+	"path"
 	"strings"
 
 	"github.com/lestrrat/go-libxml2"
@@ -27,18 +29,22 @@ type Subtitle struct {
 }
 
 type ShowSearchParams struct {
-	Name     string
-	Season   string
-	Episode  string
-	Download bool
-	Language string
-	Limit    int
+	Name         string
+	Season       string
+	Episode      string
+	Download     bool
+	Language     string
+	Limit        int
+	OutputFolder string
+	EditorName   string
 }
 
 var SHOW_NOT_PASSED = "MISSING"
 var ALL_LANGUAGES = "ALL"
 var REQUIRED_INT_NOT_PASSED = "0"
 var NO_LIMIT = 0
+var CURRENT_FOLDER = "."
+var NO_EDITOR = ""
 
 func parseParams() (*ShowSearchParams, error) {
 	showName := flag.String("name", SHOW_NOT_PASSED, "name of show")
@@ -46,6 +52,8 @@ func parseParams() (*ShowSearchParams, error) {
 	episode := flag.String("episode", REQUIRED_INT_NOT_PASSED, "episode number")
 	language := flag.String("language", ALL_LANGUAGES, "language name")
 	download := flag.Bool("download", false, "download subtitles")
+	writeTo := flag.String("output", CURRENT_FOLDER, "where to write subtitles")
+	editorName := flag.String("editor", NO_EDITOR, "open in editor")
 	limit := flag.Int("limit", NO_LIMIT, "download subtitles")
 
 	flag.Parse()
@@ -57,7 +65,9 @@ func parseParams() (*ShowSearchParams, error) {
 		return nil, errors.New("make sure to send a parameter for season and episode")
 	}
 
-	return &ShowSearchParams{*showName, *season, *episode, *download, *language, *limit}, nil
+	return &ShowSearchParams{
+		*showName, *season, *episode, *download,
+		*language, *limit, *writeTo, *editorName}, nil
 }
 
 func parseSubtitles(input []byte) ([]Subtitle, error) {
@@ -159,45 +169,50 @@ func searchSubtitles(searchParams ShowSearchParams) ([]byte, error) {
 	return data, nil
 }
 
-func downloadSubtitle(sub Subtitle) error {
+func downloadSubtitle(cmdLineOpts ShowSearchParams, sub Subtitle) (string, error) {
 	response, err := http.Get(sub.URL)
 	if err != nil {
-		return err
+		return "", err
 	}
 	bodyContents, err := ioutil.ReadAll(response.Body)
 
 	defer response.Body.Close()
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	body := bytes.NewReader(bodyContents)
 	archive, err := zip.NewReader(body, int64(len(bodyContents)))
 
 	if err != nil {
-		return err
+		return "", err
 	}
+
+	outputDest := ""
 
 	for _, file := range archive.File {
 		log.Println("preparing to download file", file.Name)
 		if fileHandle, err := file.Open(); err == nil {
-			if diskSub, createErr := os.Create(file.Name); createErr == nil {
+			outputDest = path.Join(cmdLineOpts.OutputFolder, file.Name)
+			if diskSub, createErr := os.Create(outputDest); createErr == nil {
 				_, copyErr := io.Copy(diskSub, fileHandle)
 				if copyErr != nil {
-					return copyErr
-				} else {
-					log.Println("wrote", file.Name)
+					return "", copyErr
 				}
 			} else {
-				return createErr
+				return "", createErr
 			}
 		} else {
-			return err
+			return "", err
 		}
 	}
 
-	return nil
+	if outputDest == "" {
+		return "", errors.New("no files in the archive")
+	} else {
+		return outputDest, nil
+	}
 }
 
 func main() {
@@ -220,17 +235,24 @@ func main() {
 	}
 
 	if len(subtitles) == 0 {
-		log.Println("no subtitles found")
+		log.Fatalf("no subtitles found")
 	} else {
 		for _, subtitle := range subtitles {
 			if params.Download {
 				log.Println("downloading subtitles:", len(subtitles))
 
-				err := downloadSubtitle(subtitle)
+				savedTo, err := downloadSubtitle(*params, subtitle)
 				if err != nil {
 					log.Fatalf(err.Error())
 				} else {
 					log.Println("succesfully downloaded", subtitle.URL)
+					if params.EditorName != NO_EDITOR {
+						cmd := exec.Command(params.EditorName, savedTo)
+						err = cmd.Run()
+						if err != nil {
+							log.Fatalf(err.Error())
+						}
+					}
 				}
 			} else {
 				log.Println("Subtitle for:", subtitle.Title, "available in lang:", subtitle.Language)
