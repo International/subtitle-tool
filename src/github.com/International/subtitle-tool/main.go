@@ -1,12 +1,16 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"errors"
 	"flag"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/lestrrat/go-libxml2"
@@ -94,7 +98,7 @@ func parseSubtitles(input []byte) ([]Subtitle, error) {
 		}
 
 		language := languageNode.String()
-		url := urlNode.NodeValue()
+		url := urlNode.NodeValue() + "/download"
 		releases := xpath.NodeList(subCtx.Find(".//releases/release"))
 		releaseCollection := make([]string, 0)
 		season := seasonNode.String()
@@ -153,9 +157,46 @@ func searchSubtitles(searchParams ShowSearchParams) ([]byte, error) {
 	return data, nil
 }
 
-// func downloadSubtitle(sub Subtitle) error {
-//   response, err := http.Get(sub.URL)
-// }
+func downloadSubtitle(sub Subtitle) error {
+	response, err := http.Get(sub.URL)
+	if err != nil {
+		return err
+	}
+	bodyContents, err := ioutil.ReadAll(response.Body)
+
+	defer response.Body.Close()
+
+	if err != nil {
+		return err
+	}
+
+	body := bytes.NewReader(bodyContents)
+	archive, err := zip.NewReader(body, int64(len(bodyContents)))
+
+	if err != nil {
+		return err
+	}
+
+	for _, file := range archive.File {
+		log.Println("preparing to download file", file.Name)
+		if fileHandle, err := file.Open(); err == nil {
+			if diskSub, createErr := os.Create(file.Name); createErr == nil {
+				_, copyErr := io.Copy(diskSub, fileHandle)
+				if copyErr != nil {
+					return copyErr
+				} else {
+					log.Println("wrote", file.Name)
+				}
+			} else {
+				return createErr
+			}
+		} else {
+			return err
+		}
+	}
+
+	return nil
+}
 
 func main() {
 	params, err := parseParams()
@@ -179,10 +220,20 @@ func main() {
 	log.Println(subtitles)
 
 	if params.Download {
-		log.Println("downloading subtitles")
+		log.Println("downloading subtitles:", len(subtitles))
+
+		for _, subtitle := range subtitles {
+			err := downloadSubtitle(subtitle)
+			if err != nil {
+				log.Fatalf(err.Error())
+			} else {
+				log.Println("succesfully downloaded", subtitle.URL)
+			}
+		}
 	} else {
 		log.Println("not downloading subtitles")
 	}
+
 	// args := os.Args[1:]
 	// file, err := os.Open(args[0])
 	// if err != nil {
