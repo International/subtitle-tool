@@ -27,11 +27,13 @@ type ShowSearchParams struct {
 	Episode  string
 	Download bool
 	Language string
+	Limit    int
 }
 
 var SHOW_NOT_PASSED = "MISSING"
 var ALL_LANGUAGES = "ALL"
 var REQUIRED_INT_NOT_PASSED = "0"
+var NO_LIMIT = 0
 
 func parseParams() (*ShowSearchParams, error) {
 	showName := flag.String("name", SHOW_NOT_PASSED, "name of show")
@@ -39,6 +41,7 @@ func parseParams() (*ShowSearchParams, error) {
 	episode := flag.String("episode", REQUIRED_INT_NOT_PASSED, "episode number")
 	language := flag.String("language", ALL_LANGUAGES, "language name")
 	download := flag.Bool("download", false, "download subtitles")
+	limit := flag.Int("limit", NO_LIMIT, "download subtitles")
 
 	flag.Parse()
 
@@ -49,7 +52,7 @@ func parseParams() (*ShowSearchParams, error) {
 		return nil, errors.New("make sure to send a parameter for season and episode")
 	}
 
-	return &ShowSearchParams{*showName, *season, *episode, *download, *language}, nil
+	return &ShowSearchParams{*showName, *season, *episode, *download, *language, *limit}, nil
 }
 
 func parseSubtitles(input []byte) ([]Subtitle, error) {
@@ -107,7 +110,6 @@ func parseSubtitles(input []byte) ([]Subtitle, error) {
 	}
 
 	return subtitles, nil
-	// log.
 }
 
 func searchSubtitles(searchParams ShowSearchParams) ([]byte, error) {
@@ -151,6 +153,10 @@ func searchSubtitles(searchParams ShowSearchParams) ([]byte, error) {
 	return data, nil
 }
 
+// func downloadSubtitle(sub Subtitle) error {
+//   response, err := http.Get(sub.URL)
+// }
+
 func main() {
 	params, err := parseParams()
 	if err != nil {
@@ -165,7 +171,18 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
+
+	if params.Limit != NO_LIMIT {
+		subtitles = subtitles[0:params.Limit]
+	}
+
 	log.Println(subtitles)
+
+	if params.Download {
+		log.Println("downloading subtitles")
+	} else {
+		log.Println("not downloading subtitles")
+	}
 	// args := os.Args[1:]
 	// file, err := os.Open(args[0])
 	// if err != nil {
