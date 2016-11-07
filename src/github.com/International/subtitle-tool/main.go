@@ -9,35 +9,12 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path"
-	"strings"
 
-	"github.com/lestrrat/go-libxml2"
-	"github.com/lestrrat/go-libxml2/xpath"
+	"github.com/International/podnapisi-go"
 )
-
-type Subtitle struct {
-	Title    string
-	Releases []string
-	Season   string
-	Episode  string
-	Language string
-	URL      string
-}
-
-type ShowSearchParams struct {
-	Name         string
-	Season       string
-	Episode      string
-	Download     bool
-	Language     string
-	Limit        int
-	OutputFolder string
-	EditorName   string
-}
 
 var SHOW_NOT_PASSED = "MISSING"
 var ALL_LANGUAGES = "ALL"
@@ -46,7 +23,7 @@ var NO_LIMIT = 0
 var CURRENT_FOLDER = "."
 var NO_EDITOR = ""
 
-func parseParams() (*ShowSearchParams, error) {
+func parseParams() (*podnapisi.ShowSearchParams, error) {
 	showName := flag.String("name", SHOW_NOT_PASSED, "name of show")
 	season := flag.String("season", REQUIRED_INT_NOT_PASSED, "season number")
 	episode := flag.String("episode", REQUIRED_INT_NOT_PASSED, "episode number")
@@ -65,111 +42,13 @@ func parseParams() (*ShowSearchParams, error) {
 		return nil, errors.New("make sure to send a parameter for season and episode")
 	}
 
-	return &ShowSearchParams{
-		*showName, *season, *episode, *download,
-		*language, *limit, *writeTo, *editorName}, nil
+	return &podnapisi.ShowSearchParams{
+		Name: *showName, Season: *season, Episode: *episode,
+		Download: *download, Language: *language,
+		Limit: *limit, OutputFolder: *writeTo, EditorName: *editorName}, nil
 }
 
-func parseSubtitles(input []byte) ([]Subtitle, error) {
-	d, err := libxml2.ParseString(string(input))
-	if err != nil {
-		return nil, err
-	}
-	ctx, err := xpath.NewContext(d)
-	if err != nil {
-		return nil, err
-	}
-
-	subtitles := make([]Subtitle, 0)
-
-	subtitleNodes := xpath.NodeList(ctx.Find("//subtitle"))
-
-	for _, subtitle := range subtitleNodes {
-		subCtx, err := xpath.NewContext(subtitle)
-
-		if err != nil {
-			return nil, err
-		}
-
-		titleNode, err := subCtx.Find("./title")
-		if err != nil {
-			return nil, err
-		}
-
-		title := titleNode.String()
-		urlNode := xpath.NodeList(subCtx.Find("./url"))
-		languageNode, err := subCtx.Find("./language")
-		if err != nil {
-			return nil, nil
-		}
-
-		seasonNode, err := subCtx.Find("./tvSeason")
-		if err != nil {
-			return nil, nil
-		}
-
-		episodeNode, err := subCtx.Find("./tvEpisode")
-		if err != nil {
-			return nil, nil
-		}
-
-		language := languageNode.String()
-		url := urlNode.NodeValue() + "/download"
-		releases := xpath.NodeList(subCtx.Find(".//releases/release"))
-		releaseCollection := make([]string, 0)
-		season := seasonNode.String()
-		episode := episodeNode.String()
-
-		for _, release := range releases {
-			releaseCollection = append(releaseCollection, release.NodeValue())
-		}
-
-		subtitles = append(subtitles,
-			Subtitle{Title: title, Releases: releaseCollection, Season: season,
-				Episode: episode, Language: language, URL: url})
-	}
-
-	return subtitles, nil
-}
-
-func searchSubtitles(searchParams ShowSearchParams) ([]byte, error) {
-	params := make(map[string]string)
-	params["sK"] = searchParams.Name
-	params["sTS"] = searchParams.Season
-	params["sTE"] = searchParams.Episode
-
-	if searchParams.Language != ALL_LANGUAGES {
-		params["sL"] = searchParams.Language
-	}
-	params["sXML"] = "1"
-	requestUrl := "https://www.podnapisi.net/subtitles/search/old?"
-	queryString := ""
-
-	requestParams := make([]string, 0)
-
-	for key, value := range params {
-		requestParams = append(requestParams, key+"="+url.QueryEscape(value))
-	}
-
-	queryString = strings.Join(requestParams, "&")
-	fullUrl := requestUrl + queryString
-
-	response, err := http.Get(fullUrl)
-
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := ioutil.ReadAll(response.Body)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
-}
-
-func downloadSubtitle(cmdLineOpts ShowSearchParams, sub Subtitle) (string, error) {
+func downloadSubtitle(cmdLineOpts podnapisi.ShowSearchParams, sub podnapisi.Subtitle) (string, error) {
 	response, err := http.Get(sub.URL)
 	if err != nil {
 		return "", err
@@ -221,11 +100,7 @@ func main() {
 		log.Fatalf(err.Error())
 		log.Fatalf("usage: subtitle_tool -name name -season season_number -episode episode_number -download")
 	}
-	subtitleData, err := searchSubtitles(*params)
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-	subtitles, err := parseSubtitles(subtitleData)
+	subtitles, err := podnapisi.Search(*params)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}

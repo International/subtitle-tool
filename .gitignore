@@ -4,5 +4,5 @@ src/*
 
 !src/github.com/
 src/github.com/*
-!src/github.com/International/
+!src/github.com/International/subtitle-tool
 pkg
