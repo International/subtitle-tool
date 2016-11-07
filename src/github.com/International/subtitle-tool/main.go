@@ -23,7 +23,13 @@ var NO_LIMIT = 0
 var CURRENT_FOLDER = "."
 var NO_EDITOR = ""
 
-func parseParams() (*podnapisi.ShowSearchParams, error) {
+type cliParams struct {
+	OutputFolder string
+	EditorName   string
+	podnapisi.ShowSearchParams
+}
+
+func parseParams() (*cliParams, error) {
 	showName := flag.String("name", SHOW_NOT_PASSED, "name of show")
 	season := flag.String("season", REQUIRED_INT_NOT_PASSED, "season number")
 	episode := flag.String("episode", REQUIRED_INT_NOT_PASSED, "episode number")
@@ -42,13 +48,13 @@ func parseParams() (*podnapisi.ShowSearchParams, error) {
 		return nil, errors.New("make sure to send a parameter for season and episode")
 	}
 
-	return &podnapisi.ShowSearchParams{
-		Name: *showName, Season: *season, Episode: *episode,
-		Download: *download, Language: *language,
-		Limit: *limit, OutputFolder: *writeTo, EditorName: *editorName}, nil
+	return &cliParams{
+		ShowSearchParams: podnapisi.ShowSearchParams{Name: *showName, Season: *season, Episode: *episode,
+			Download: *download, Language: *language,
+			Limit: *limit}, OutputFolder: *writeTo, EditorName: *editorName}, nil
 }
 
-func downloadSubtitle(cmdLineOpts podnapisi.ShowSearchParams, sub podnapisi.Subtitle) (string, error) {
+func downloadSubtitle(cmdLineOpts cliParams, sub podnapisi.Subtitle) (string, error) {
 	response, err := http.Get(sub.URL)
 	if err != nil {
 		return "", err
@@ -100,7 +106,7 @@ func main() {
 		log.Fatalf(err.Error())
 		log.Fatalf("usage: subtitle_tool -name name -season season_number -episode episode_number -download")
 	}
-	subtitles, err := podnapisi.Search(*params)
+	subtitles, err := podnapisi.Search(params.ShowSearchParams)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
