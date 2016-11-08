@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -12,13 +13,14 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 
 	"github.com/International/podnapisi-go"
 	"github.com/oz/osdb"
 )
 
 var SHOW_NOT_PASSED = "MISSING"
-var ALL_LANGUAGES = "ALL"
+var ALL_LANGUAGES = "all"
 var REQUIRED_INT_NOT_PASSED = "0"
 var NO_LIMIT = 0
 var CURRENT_FOLDER = "."
@@ -55,6 +57,21 @@ func parseParams() (*cliParams, error) {
 			Limit: *limit}, OutputFolder: *writeTo, EditorName: *editorName}, nil
 }
 
+func isRelevantSubtitle(fileName string) bool {
+	irrelevantExtensions := []string{".nfo"}
+	isRelevant := true
+	lowerCasedName := strings.ToLower(fileName)
+
+	for _, sub := range irrelevantExtensions {
+		if strings.HasSuffix(lowerCasedName, sub) {
+			isRelevant = false
+			break
+		}
+	}
+
+	return isRelevant
+}
+
 func downloadSubtitle(cmdLineOpts cliParams, sub podnapisi.Subtitle) (string, error) {
 	response, err := http.Get(sub.URL)
 	if err != nil {
@@ -78,10 +95,16 @@ func downloadSubtitle(cmdLineOpts cliParams, sub podnapisi.Subtitle) (string, er
 	outputDest := ""
 
 	for _, file := range archive.File {
+		if !isRelevantSubtitle(file.Name) {
+			continue
+		}
+
 		log.Println("preparing to download file", file.Name)
 		if fileHandle, err := file.Open(); err == nil {
-			outputDest = path.Join(cmdLineOpts.OutputFolder, file.Name)
-			if diskSub, createErr := os.Create(outputDest); createErr == nil {
+			archivedFile := path.Join(cmdLineOpts.OutputFolder, file.Name)
+			outputDest = archivedFile
+
+			if diskSub, createErr := os.Create(archivedFile); createErr == nil {
 				_, copyErr := io.Copy(diskSub, fileHandle)
 				if copyErr != nil {
 					return "", copyErr
@@ -101,17 +124,88 @@ func downloadSubtitle(cmdLineOpts cliParams, sub podnapisi.Subtitle) (string, er
 	}
 }
 
-func SearchIMDB(q string) (osdb.Movies, error) {
+func SearchSubs(searchParams podnapisi.ShowSearchParams) ([]podnapisi.Subtitle, error) {
+	osdbSubs, osdbError := SearchOSDB(searchParams)
+	podnapisiSubs, podnapisiError := podnapisi.Search(searchParams)
+
+	log.Println("OSDB #results", len(osdbSubs), "error", osdbError)
+	log.Println("Podnapisi #results", len(podnapisiSubs), "error", podnapisiError)
+
+	subz := make([]podnapisi.Subtitle, 0)
+	haveError := false
+
+	if osdbError == nil {
+		subz = append(subz, osdbSubs...)
+	} else {
+		haveError = true
+	}
+
+	if podnapisiError == nil {
+		subz = append(subz, podnapisiSubs...)
+	} else {
+		haveError = true
+	}
+
+	if haveError {
+		return subz, fmt.Errorf("osdb error: %s, podnapisi error : %s", osdbError, podnapisiError)
+	} else {
+		return subz, nil
+	}
+
+}
+
+var languageAdaptation = map[string]string{
+	"en":  "eng",
+	"pl":  "pol",
+	"pol": "pol",
+	"all": "all",
+}
+
+func SearchOSDB(searchParams podnapisi.ShowSearchParams) ([]podnapisi.Subtitle, error) {
+
 	if c, err := osdb.NewClient(); err == nil {
 
 		if err = c.LogIn("", "", ""); err != nil {
-			return nil, err
+			return []podnapisi.Subtitle{}, err
 		}
 
-		return c.IMDBSearch(q)
+		langAdaptation, ok := languageAdaptation[searchParams.Language]
+		if !ok {
+			return []podnapisi.Subtitle{}, fmt.Errorf("language %s not supported", searchParams.Language)
+		}
+
+		params := []interface{}{
+			c.Token,
+			[]map[string]string{
+				{
+					"query":         searchParams.Name,
+					"season":        searchParams.Season,
+					"episode":       searchParams.Episode,
+					"sublanguageid": langAdaptation,
+				},
+			},
+		}
+
+		log.Println("OSDB query: %v", params)
+
+		subz, err := c.SearchSubtitles(&params)
+		if err != nil {
+			return []podnapisi.Subtitle{}, err
+		}
+		to_podnapisi_sub := make([]podnapisi.Subtitle, 0)
+
+		for _, sub := range subz {
+			// log.Println("sub iz %v", sub)
+			podsub := podnapisi.Subtitle{
+				Title: sub.MovieReleaseName, Releases: []string{}, Season: sub.SeriesSeason,
+				Episode: sub.SeriesEpisode, Language: sub.LanguageName, URL: sub.ZipDownloadLink,
+			}
+			to_podnapisi_sub = append(to_podnapisi_sub, podsub)
+		}
+		return to_podnapisi_sub, nil
 
 	} else {
-		return nil, err
+		return []podnapisi.Subtitle{}, err
 	}
 }
 
@@ -122,7 +216,7 @@ func main() {
 		log.Fatalf("usage: subtitle_tool -name name -season season_number -episode episode_number -download")
 	}
 
-	subtitles, err := podnapisi.Search(params.ShowSearchParams)
+	subtitles, err := SearchSubs(params.ShowSearchParams)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
