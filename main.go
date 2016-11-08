@@ -34,6 +34,13 @@ type PodnapisiSearch struct {
 }
 
 func (p PodnapisiSearch) Search(searchParams podnapisi.ShowSearchParams) ([]podnapisi.Subtitle, error) {
+	return podnapisi.Search(searchParams)
+}
+
+type OSDBSearch struct {
+}
+
+func (p OSDBSearch) Search(searchParams podnapisi.ShowSearchParams) ([]podnapisi.Subtitle, error) {
 	if c, err := osdb.NewClient(); err == nil {
 
 		if err = c.LogIn("", "", ""); err != nil {
@@ -80,7 +87,7 @@ func (p PodnapisiSearch) Search(searchParams podnapisi.ShowSearchParams) ([]podn
 	}
 }
 
-var subtitleSearchEngines = []SubtitleSearcher{PodnapisiSearch{}}
+var subtitleSearchEngines = []SubtitleSearcher{OSDBSearch{}, PodnapisiSearch{}}
 
 type cliParams struct {
 	OutputFolder string
@@ -191,16 +198,6 @@ func SearchSubs(searchParams podnapisi.ShowSearchParams) ([]podnapisi.Subtitle, 
 		} else {
 			subSearchErrors = append(subSearchErrors, subError)
 		}
-	}
-
-	podnapisiSubs, podnapisiError := podnapisi.Search(searchParams)
-
-	log.Println("Podnapisi #results", len(podnapisiSubs), "error", podnapisiError)
-
-	if podnapisiError == nil {
-		subz = append(subz, podnapisiSubs...)
-	} else {
-		subSearchErrors = append(subSearchErrors, podnapisiError)
 	}
 
 	errorString := ""
