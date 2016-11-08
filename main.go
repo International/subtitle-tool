@@ -14,6 +14,7 @@ import (
 	"path"
 
 	"github.com/International/podnapisi-go"
+	"github.com/oz/osdb"
 )
 
 var SHOW_NOT_PASSED = "MISSING"
@@ -100,12 +101,27 @@ func downloadSubtitle(cmdLineOpts cliParams, sub podnapisi.Subtitle) (string, er
 	}
 }
 
+func SearchIMDB(q string) (osdb.Movies, error) {
+	if c, err := osdb.NewClient(); err == nil {
+
+		if err = c.LogIn("", "", ""); err != nil {
+			return nil, err
+		}
+
+		return c.IMDBSearch(q)
+
+	} else {
+		return nil, err
+	}
+}
+
 func main() {
 	params, err := parseParams()
 	if err != nil {
 		log.Fatalf(err.Error())
 		log.Fatalf("usage: subtitle_tool -name name -season season_number -episode episode_number -download")
 	}
+
 	subtitles, err := podnapisi.Search(params.ShowSearchParams)
 	if err != nil {
 		log.Fatalf(err.Error())
