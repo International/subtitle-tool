@@ -26,6 +26,62 @@ var NO_LIMIT = 0
 var CURRENT_FOLDER = "."
 var NO_EDITOR = ""
 
+type SubtitleSearcher interface {
+	Search(podnapisi.ShowSearchParams) ([]podnapisi.Subtitle, error)
+}
+
+type PodnapisiSearch struct {
+}
+
+func (p PodnapisiSearch) Search(searchParams podnapisi.ShowSearchParams) ([]podnapisi.Subtitle, error) {
+	if c, err := osdb.NewClient(); err == nil {
+
+		if err = c.LogIn("", "", ""); err != nil {
+			return []podnapisi.Subtitle{}, err
+		}
+
+		langAdaptation, ok := languageAdaptation[searchParams.Language]
+		if !ok {
+			return []podnapisi.Subtitle{}, fmt.Errorf("language %s not supported", searchParams.Language)
+		}
+
+		params := []interface{}{
+			c.Token,
+			[]map[string]string{
+				{
+					"query":         searchParams.Name,
+					"season":        searchParams.Season,
+					"episode":       searchParams.Episode,
+					"sublanguageid": langAdaptation,
+				},
+			},
+		}
+
+		log.Println("OSDB query: %v", params)
+
+		subz, err := c.SearchSubtitles(&params)
+		if err != nil {
+			return []podnapisi.Subtitle{}, err
+		}
+		to_podnapisi_sub := make([]podnapisi.Subtitle, 0)
+
+		for _, sub := range subz {
+			// log.Println("sub iz %v", sub)
+			podsub := podnapisi.Subtitle{
+				Title: sub.MovieReleaseName, Releases: []string{}, Season: sub.SeriesSeason,
+				Episode: sub.SeriesEpisode, Language: sub.LanguageName, URL: sub.ZipDownloadLink,
+			}
+			to_podnapisi_sub = append(to_podnapisi_sub, podsub)
+		}
+		return to_podnapisi_sub, nil
+
+	} else {
+		return []podnapisi.Subtitle{}, err
+	}
+}
+
+var subtitleSearchEngines = []SubtitleSearcher{PodnapisiSearch{}}
+
 type cliParams struct {
 	OutputFolder string
 	EditorName   string
@@ -125,29 +181,36 @@ func downloadSubtitle(cmdLineOpts cliParams, sub podnapisi.Subtitle) (string, er
 }
 
 func SearchSubs(searchParams podnapisi.ShowSearchParams) ([]podnapisi.Subtitle, error) {
-	osdbSubs, osdbError := SearchOSDB(searchParams)
+	subz := make([]podnapisi.Subtitle, 0)
+	subSearchErrors := make([]error, 0)
+
+	for _, subSearchEngine := range subtitleSearchEngines {
+		subs, subError := subSearchEngine.Search(searchParams)
+		if subError == nil {
+			subz = append(subz, subs...)
+		} else {
+			subSearchErrors = append(subSearchErrors, subError)
+		}
+	}
+
 	podnapisiSubs, podnapisiError := podnapisi.Search(searchParams)
 
-	log.Println("OSDB #results", len(osdbSubs), "error", osdbError)
 	log.Println("Podnapisi #results", len(podnapisiSubs), "error", podnapisiError)
-
-	subz := make([]podnapisi.Subtitle, 0)
-	haveError := false
-
-	if osdbError == nil {
-		subz = append(subz, osdbSubs...)
-	} else {
-		haveError = true
-	}
 
 	if podnapisiError == nil {
 		subz = append(subz, podnapisiSubs...)
 	} else {
-		haveError = true
+		subSearchErrors = append(subSearchErrors, podnapisiError)
 	}
 
-	if haveError {
-		return subz, fmt.Errorf("osdb error: %s, podnapisi error : %s", osdbError, podnapisiError)
+	errorString := ""
+
+	for _, subSearchError := range subSearchErrors {
+		errorString += fmt.Sprintf("error:%s ", subSearchError.Error())
+	}
+
+	if errorString != "" {
+		return subz, errors.New(errorString)
 	} else {
 		return subz, nil
 	}
@@ -159,54 +222,6 @@ var languageAdaptation = map[string]string{
 	"pl":  "pol",
 	"pol": "pol",
 	"all": "all",
-}
-
-func SearchOSDB(searchParams podnapisi.ShowSearchParams) ([]podnapisi.Subtitle, error) {
-
-	if c, err := osdb.NewClient(); err == nil {
-
-		if err = c.LogIn("", "", ""); err != nil {
-			return []podnapisi.Subtitle{}, err
-		}
-
-		langAdaptation, ok := languageAdaptation[searchParams.Language]
-		if !ok {
-			return []podnapisi.Subtitle{}, fmt.Errorf("language %s not supported", searchParams.Language)
-		}
-
-		params := []interface{}{
-			c.Token,
-			[]map[string]string{
-				{
-					"query":         searchParams.Name,
-					"season":        searchParams.Season,
-					"episode":       searchParams.Episode,
-					"sublanguageid": langAdaptation,
-				},
-			},
-		}
-
-		log.Println("OSDB query: %v", params)
-
-		subz, err := c.SearchSubtitles(&params)
-		if err != nil {
-			return []podnapisi.Subtitle{}, err
-		}
-		to_podnapisi_sub := make([]podnapisi.Subtitle, 0)
-
-		for _, sub := range subz {
-			// log.Println("sub iz %v", sub)
-			podsub := podnapisi.Subtitle{
-				Title: sub.MovieReleaseName, Releases: []string{}, Season: sub.SeriesSeason,
-				Episode: sub.SeriesEpisode, Language: sub.LanguageName, URL: sub.ZipDownloadLink,
-			}
-			to_podnapisi_sub = append(to_podnapisi_sub, podsub)
-		}
-		return to_podnapisi_sub, nil
-
-	} else {
-		return []podnapisi.Subtitle{}, err
-	}
 }
 
 func main() {
