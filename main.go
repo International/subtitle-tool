@@ -86,7 +86,7 @@ func (p OSDBSearch) Search(searchParams podnapisi.ShowSearchParams) ([]podnapisi
 
 		for _, sub := range subz {
 			podsub := podnapisi.Subtitle{
-				Title: sub.MovieReleaseName, Releases: []string{}, Season: sub.SeriesSeason,
+				Title: sub.MovieReleaseName, Releases: []string{sub.MovieReleaseName}, Season: sub.SeriesSeason,
 				Episode: sub.SeriesEpisode, Language: sub.LanguageName, URL: sub.ZipDownloadLink,
 			}
 			to_podnapisi_sub = append(to_podnapisi_sub, podsub)
