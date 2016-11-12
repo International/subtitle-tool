@@ -18,6 +18,7 @@ import (
 	"github.com/International/podnapisi-go"
 	"github.com/oz/osdb"
 	"encoding/json"
+	"sort"
 )
 
 var SHOW_NOT_PASSED = "MISSING"
@@ -96,6 +97,13 @@ func (p OSDBSearch) Search(searchParams podnapisi.ShowSearchParams) ([]podnapisi
 		return []podnapisi.Subtitle{}, err
 	}
 }
+
+type SubtitleSorter []podnapisi.Subtitle
+
+func (a SubtitleSorter) Len() int           { return len(a) }
+func (a SubtitleSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a SubtitleSorter) Less(i, j int) bool { return a[i].Language < a[j].Language }
+
 
 var subtitleSearchEngines = []SubtitleSearcher{OSDBSearch{}, PodnapisiSearch{}}
 
@@ -256,6 +264,8 @@ func main() {
 	if params.Limit != NO_LIMIT {
 		subtitles = subtitles[0:params.Limit]
 	}
+
+	sort.Sort(SubtitleSorter(subtitles))
 
 	if len(subtitles) == 0 {
 		log.Fatalf("no subtitles found")
