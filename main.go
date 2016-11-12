@@ -53,7 +53,8 @@ func (p OSDBSearch) Search(searchParams podnapisi.ShowSearchParams) ([]podnapisi
 
 		langAdaptation, ok := languageAdaptation[searchParams.Language]
 		if !ok {
-			return []podnapisi.Subtitle{}, fmt.Errorf("language %s not supported", searchParams.Language)
+			//return []podnapisi.Subtitle{}, fmt.Errorf("language %s not supported", searchParams.Language)
+			langAdaptation = searchParams.Language
 		}
 
 		osdbSearchParams := map[string]string{
@@ -236,6 +237,7 @@ var languageAdaptation = map[string]string{
 	"en":  "eng",
 	"pl":  "pol",
 	"pol": "pol",
+	"ro": "ro",
 	"all": "all",
 }
 
