@@ -28,6 +28,7 @@ var CURRENT_FOLDER = "."
 var NO_EDITOR = ""
 var NO_SPECIAL_OUTPUT = "normal"
 var SUPPORTED_FORMATS = []string{"json"}
+var VERBOSE = true
 
 type SubtitleSearcher interface {
 	Search(podnapisi.ShowSearchParams) ([]podnapisi.Subtitle, error)
@@ -67,8 +68,6 @@ func (p OSDBSearch) Search(searchParams podnapisi.ShowSearchParams) ([]podnapisi
 			},
 		}
 
-		log.Println("OSDB query: %v", params)
-
 		subz, err := c.SearchSubtitles(&params)
 		if err != nil {
 			return []podnapisi.Subtitle{}, err
@@ -76,7 +75,6 @@ func (p OSDBSearch) Search(searchParams podnapisi.ShowSearchParams) ([]podnapisi
 		to_podnapisi_sub := make([]podnapisi.Subtitle, 0)
 
 		for _, sub := range subz {
-			// log.Println("sub iz %v", sub)
 			podsub := podnapisi.Subtitle{
 				Title: sub.MovieReleaseName, Releases: []string{}, Season: sub.SeriesSeason,
 				Episode: sub.SeriesEpisode, Language: sub.LanguageName, URL: sub.ZipDownloadLink,
@@ -97,7 +95,14 @@ type cliParams struct {
 	EditorName   string
 	Download     bool
 	OutputFormat string
+	Quiet bool
 	podnapisi.ShowSearchParams
+}
+
+func (c cliParams) d(v ...interface{}) {
+	if !c.Quiet {
+		log.Println(v...)
+	}
 }
 
 func parseParams() (*cliParams, error) {
@@ -106,6 +111,7 @@ func parseParams() (*cliParams, error) {
 	episode := flag.String("episode", REQUIRED_INT_NOT_PASSED, "episode number")
 	language := flag.String("language", ALL_LANGUAGES, "language name")
 	download := flag.Bool("download", false, "where to download subtitles")
+	quiet := flag.Bool("verbose", false, "output extra info")
 	outputFormat := flag.String("format", NO_SPECIAL_OUTPUT, "format to write ( JSON supported )")
 	writeTo := flag.String("output", CURRENT_FOLDER, "where to write subtitles")
 	editorName := flag.String("editor", NO_EDITOR, "open in editor")
@@ -124,7 +130,7 @@ func parseParams() (*cliParams, error) {
 		ShowSearchParams: podnapisi.ShowSearchParams{Name: *showName, Season: *season, Episode: *episode,
 			Language: *language,
 			Limit:    *limit}, OutputFormat: *outputFormat,
-		OutputFolder: *writeTo, Download: *download, EditorName: *editorName}, nil
+		OutputFolder: *writeTo, Quiet: *quiet, Download: *download, EditorName: *editorName}, nil
 }
 
 func isRelevantSubtitle(fileName string) bool {
@@ -169,7 +175,7 @@ func downloadSubtitle(cmdLineOpts cliParams, sub podnapisi.Subtitle) (string, er
 			continue
 		}
 
-		log.Println("preparing to download file", file.Name)
+		cmdLineOpts.d("preparing to download file", file.Name)
 		if fileHandle, err := file.Open(); err == nil {
 			archivedFile := path.Join(cmdLineOpts.OutputFolder, file.Name)
 			outputDest = archivedFile
@@ -250,13 +256,13 @@ func main() {
 		if params.OutputFormat == NO_SPECIAL_OUTPUT {
 			for _, subtitle := range subtitles {
 				if params.Download {
-					log.Println("downloading subtitles:", len(subtitles))
+					params.d("downloading subtitles:", len(subtitles))
 
 					savedTo, err := downloadSubtitle(*params, subtitle)
 					if err != nil {
 						log.Fatalf(err.Error())
 					} else {
-						log.Println("succesfully downloaded", subtitle.URL)
+						params.d("succesfully downloaded", subtitle.URL)
 						if params.EditorName != NO_EDITOR {
 							cmd := exec.Command(params.EditorName, savedTo)
 							err = cmd.Run()
@@ -266,7 +272,7 @@ func main() {
 						}
 					}
 				} else {
-					log.Println("Subtitle for:", subtitle.Title, "available in lang:", subtitle.Language)
+					params.d("Subtitle for:", subtitle.Title, "available in lang:", subtitle.Language)
 				}
 			}
 		} else {
