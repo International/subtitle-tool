@@ -56,15 +56,23 @@ func (p OSDBSearch) Search(searchParams podnapisi.ShowSearchParams) ([]podnapisi
 			return []podnapisi.Subtitle{}, fmt.Errorf("language %s not supported", searchParams.Language)
 		}
 
+		osdbSearchParams := map[string]string{
+			"query":         searchParams.Name,
+			"sublanguageid": langAdaptation,
+		}
+
+		if searchParams.Season != REQUIRED_INT_NOT_PASSED {
+			osdbSearchParams["season"] = searchParams.Season
+		}
+
+		if searchParams.Episode != REQUIRED_INT_NOT_PASSED {
+			osdbSearchParams["episode"] = searchParams.Episode
+		}
+
 		params := []interface{}{
 			c.Token,
 			[]map[string]string{
-				{
-					"query":         searchParams.Name,
-					"season":        searchParams.Season,
-					"episode":       searchParams.Episode,
-					"sublanguageid": langAdaptation,
-				},
+				osdbSearchParams,
 			},
 		}
 
@@ -121,9 +129,6 @@ func parseParams() (*cliParams, error) {
 
 	if *showName == SHOW_NOT_PASSED {
 		return nil, errors.New("name of show is required")
-	}
-	if *season == REQUIRED_INT_NOT_PASSED || *episode == REQUIRED_INT_NOT_PASSED {
-		return nil, errors.New("make sure to send a parameter for season and episode")
 	}
 
 	return &cliParams{
