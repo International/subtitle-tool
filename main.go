@@ -92,6 +92,7 @@ var subtitleSearchEngines = []SubtitleSearcher{OSDBSearch{}, PodnapisiSearch{}}
 type cliParams struct {
 	OutputFolder string
 	EditorName   string
+	Download     bool
 	podnapisi.ShowSearchParams
 }
 
@@ -100,7 +101,7 @@ func parseParams() (*cliParams, error) {
 	season := flag.String("season", REQUIRED_INT_NOT_PASSED, "season number")
 	episode := flag.String("episode", REQUIRED_INT_NOT_PASSED, "episode number")
 	language := flag.String("language", ALL_LANGUAGES, "language name")
-	download := flag.Bool("download", false, "download subtitles")
+	download := flag.Bool("download", false, "where to download subtitles")
 	writeTo := flag.String("output", CURRENT_FOLDER, "where to write subtitles")
 	editorName := flag.String("editor", NO_EDITOR, "open in editor")
 	limit := flag.Int("limit", NO_LIMIT, "download subtitles")
@@ -116,8 +117,8 @@ func parseParams() (*cliParams, error) {
 
 	return &cliParams{
 		ShowSearchParams: podnapisi.ShowSearchParams{Name: *showName, Season: *season, Episode: *episode,
-			Download: *download, Language: *language,
-			Limit: *limit}, OutputFolder: *writeTo, EditorName: *editorName}, nil
+			Language: *language,
+			Limit:    *limit}, OutputFolder: *writeTo, Download: *download, EditorName: *editorName}, nil
 }
 
 func isRelevantSubtitle(fileName string) bool {
